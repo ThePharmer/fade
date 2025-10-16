@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite it as below."
+authors:
+  - family-names: "Smith"
+    given-names: "Jared"
+    # email: jaredsmithrx@gmail.com
+    # orcid: https://orcid.org/0009-0003-1102-901X
+title: "FADE: A Memory Degradation Architecture for Reliable AI Systems"
+abstract: "AI that deliberately forgets like humans do, using memory degradation as an intrinsic confidence signal. Reduces hallucinations, enables epistemic humility, and solves stateful deployment challenges."
+version: 1.0
+date-released: 2025-10-16
+url: "https://github.com/ThePharmer/fade"
+repository-code: "https://github.com/ThePharmer/fade"
+keywords:
+  - retrieval-augmented-generation
+  - confidence-calibration
+  - memory-architecture
+  - ai-alignment
+  - epistemic-humility
+  - machine-learning
+  - language-models
+license: Apache-2.0
