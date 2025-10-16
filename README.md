@@ -74,8 +74,8 @@ else:
 
 ## Documentation
 
-- **[Technical Proposal](docs/technical-proposal.md)**: Detailed architecture, training procedures, evaluation framework
-- **[Executive Briefing](docs/executive-briefing.md)**: Accessible explanation for non-technical audiences
+- **[Proposal](docs/PROPOSAL.md)**: Detailed architecture, training procedures, evaluation framework
+- **[Summary](docs/SUMMARY.md)**: Accessible explanation for non-technical audiences
 - **[Related Work](references/related-work.md)**: Comparison to existing approaches
 
 ## Current Status
