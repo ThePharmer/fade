@@ -108,35 +108,6 @@ This is a research proposal. We're seeking:
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
-## Citation
-
-If you use this work, please cite:
-
-```bibtex
-@misc{fade2025,
-  title={FADE: A Memory Degradation Architecture for Reliable AI Systems},
-  author={Jared Smith},
-  year={2025},
-  url={https://github.com/ThePharmer/fade}
-}
-```
-
-See [CITATION.cff](CITATION.cff) for structured citation data.
-
 ## License
 
 Apache 2.0 License - See [LICENSE](LICENSE) for details.
-
-## Why This Might Work
-
-**Theoretical foundation**: Provides direct confidence signal rather than indirect inference.
-
-**Multiple benefits convergence**: Same architectural change addresses RAG efficiency, AI alignment, and scalable deployment. When one solution solves multiple hard problems, it suggests you're touching something fundamental.
-
-**Biological plausibility**: Human memory systems evolved to solve exactly this problem.
-
----
-
-**Status**: Conceptual Proposal  
-**Version**: 1.0  
-**Last Updated**: October 2025
