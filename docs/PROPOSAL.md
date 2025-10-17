@@ -21,7 +21,7 @@ Retrieval-Augmented Generation systems must decide: rely on parametric knowledge
 Recent work attempts to quantify uncertainty using:
 - **ConfRAG (2024)**: Fine-tune models to output "I am unsure"
 - **UncertaintyRAG (2024)**: SNR-based span uncertainty from attention
-- **Activation-based (2025)**: Raw FFN activation patterns as confidence
+- **Activation-based (2024)**: Raw FFN activation patterns as confidence
 
 **Critical flaw**: Models maintain perfect working memory (all context equally accessible). Confidence measures are reverse-engineered from outputs, not intrinsic to knowledge state. Result: models can be confidently wrong because confidence is decoupled from actual memory fidelity.
 
@@ -70,7 +70,7 @@ strength[i](t) = base_strength[i] * exp(-decay_rate * (t - last_access[i])) +
 **Degradation implementation options**:
 1. **Noise injection**: Add noise proportional to (1 - strength) to hidden states
 2. **Quantization**: Reduce precision of low-strength representations
-3. **Attention masking**: Scale attention weights by strength values
+3. **Attention masking**: Scale attention weights by strength values (exact implementation—before or after softmax—requires empirical testing)
 4. **Selective dropout**: Drop low-strength tokens with probability (1 - strength)
 
 We recommend starting with attention masking for interpretability and simplicity.
@@ -86,9 +86,11 @@ fuzziness = attention_entropy +
             beta * activation_variance
 
 attention_entropy = -sum(p_i * log(p_i))  # entropy of attention distribution
-reconstruction_error = ||original_state - retrieved_state||^2
+reconstruction_error = ||original_state - retrieved_state||^2  [see Section 4.5]
 activation_variance = var(activations) across multiple forward passes
 ```
+
+**Note:** Measuring reconstruction_error requires addressing the circularity problem discussed in Section 4.5; the metric assumes one of those measurement approaches will be implemented.
 
 **Parameters to tune**: alpha, beta (relative weighting of signals)
 
@@ -353,7 +355,7 @@ calibration_loss = ||P_pred(correct | fuzziness) - P_actual(correct | fuzziness)
 ### Success Criteria
 
 **Minimum viable**:
-- ECE improvement > 5% over token-probability baselines
+- ECE improvement > 5% over the best-performing proxy-based baseline
 - Retrieval precision > 80%
 - Task accuracy within 2% of always-retrieve baseline
 
@@ -477,8 +479,8 @@ Next conversation:
 - This experiences uncertainty in retrieval process
 - Proxy vs intrinsic signal
 
-**vs Attention-Based Uncertainty**:
-- Those analyze attention patterns post-hoc
+**vs Attention-Based Uncertainty (UncertaintyRAG, 2024)**:
+- Those analyze attention patterns post-hoc or use SNR-based span uncertainty
 - This uses attention to determine strength
 - Analysis vs mechanism
 
@@ -486,6 +488,11 @@ Next conversation:
 - That requires multiple generations
 - This provides signal in single forward pass
 - Expensive vs efficient
+
+**vs Activation-Based Methods (Liu et al., 2024)**:
+- Those train classifiers on hidden states
+- This makes uncertainty intrinsic through degradation
+- External calibration vs internal experience
 
 ### Active Forgetting
 
@@ -498,6 +505,11 @@ Next conversation:
 - Uses forget gates for managing context
 - This ties forgetting to access patterns
 - Explicit control vs emergent behavior
+
+**vs Learning by Active Forgetting (Peng et al., 2021)**:
+- Introduces inhibitory neurons for representation flexibility
+- This focuses on confidence calibration through degradation
+- Neurobiological inspiration vs functional motivation
 
 **Key distinction**: None of the above implement degradation-as-confidence-signal for retrieval triggering. They either prevent forgetting (memory architectures), infer confidence indirectly (confidence methods), or forget for efficiency (active forgetting). This is the first proposal to treat degradation as intrinsic uncertainty information.
 
@@ -582,35 +594,28 @@ This could represent a paradigm shift in how we architect memory systems for AI,
 ## References & Related Work
 
 **Confidence-Based RAG**:
-- ConfRAG (2024): Fine-tuning for "I am unsure" responses
-- UncertaintyRAG (2024): SNR-based span uncertainty
-- Activation-based confidence (2025): FFN activation signals
+- ConfRAG (Huang et al., 2025): Fine-tuning for "I am unsure" responses - arXiv:2506.07309
+- UncertaintyRAG (Li et al., 2024): SNR-based span uncertainty - arXiv:2410.02719
+- Activation-based confidence (Liu et al., 2024): FFN activation signals - arXiv:2406.13230
+- Active retrieval augmented generation (Jiang et al., 2023) - arXiv:2305.06983
+- DragIN (Su et al., 2024): Dynamic retrieval based on information needs - arXiv:2403.10081
 
 **Active Forgetting in ML**:
-- Expire-Span (2021): Learning to forget by expiring
-- Forgetting Transformer (2024): Forget gates in attention
-- Learning by Active Forgetting (2021): Inhibitory neurons
+- Expire-Span (Sukhbaatar et al., 2021): Learning to forget by expiring - ICML 2021
+- Forgetting Transformer (Lin et al., 2025): Forget gates in attention - ICLR 2025, arXiv:2503.02130
+- Learning by Active Forgetting (Peng et al., 2021): Inhibitory neurons - arXiv:2111.10831
 
 **Memory Architectures**:
-- Memory Networks (2015)
-- Neural Turing Machines (2014)
-- Differentiable Neural Computers (2016)
+- Memory Networks (Weston et al., 2015) - ICLR 2015
+- Neural Turing Machines (Graves et al., 2014) - arXiv:1410.5401
+- Differentiable Neural Computers (Graves et al., 2016) - Nature 538(7626):471-476
 
 **Catastrophic Forgetting**:
-- Elastic Weight Consolidation (2017)
-- Sleep-like replay for consolidation (2020-2022)
-
-## Contact & Collaboration
-
-Interested in implementing, testing, or extending FADE?
-
-- **Questions and ideas**: [Open an issue](https://github.com/ThePharmer/fade/issues)
-- **Broader discussions**: Use [GitHub Discussions](https://github.com/ThePharmer/fade/discussions)
-
-All technical discussion happens publicly so others can learn and contribute.
+- Elastic Weight Consolidation (Kirkpatrick et al., 2017) - PNAS 114(13):3521-3526
+- Sleep-like replay for consolidation (Tadros et al., 2022) - Nature Communications 13:7742, https://doi.org/10.1038/s41467-022-34938-7
 
 ---
 
-**Document Version**: 1.1  
+**Document Version**: 1.2  
 **Last Updated**: October 2025  
 **Status**: Conceptual Proposal - Requires Implementation and Empirical Validation

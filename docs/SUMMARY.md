@@ -18,7 +18,7 @@ Our system makes the AI actually experience uncertain recall, providing a direct
 ### How It Works (Simplified)
 
 **Two Memory Systems**:
-- **Working Memory**: Active information that naturally degrades over time and with lack of use (like human memory)
+- **Working Memory**: Active information that naturally degrades over time and with lack of use (like human short-term memory)
 - **Backup Storage**: Complete, permanent record (like notes or a database)
 
 **Information Strength**:
@@ -127,7 +127,7 @@ This is a novel conceptual proposal. No published research implements this speci
 5. Testing across diverse tasks
 
 **Success would mean**:
-- Improved confidence calibration (5-10%+ better than current methods)
+- Improved confidence calibration (5-10%+ better than current methods over the best-performing proxy-based baseline)
 - High precision when retrieval is triggered (80-90%+ actually needed)
 - Maintained accuracy with significantly fewer retrievals (30-50% reduction target)
 - Interpretable memory patterns
@@ -139,6 +139,7 @@ This is a novel conceptual proposal. No published research implements this speci
 - Best level of granularity (word-level vs phrase-level vs concept-level)
 - Actual computational overhead
 - How to prevent the system from "gaming" the mechanism
+- Exact implementation details (e.g., attention masking before or after softmax requires empirical testing)
 
 **What could go wrong**:
 - Fuzziness metric might not correlate with actual uncertainty
@@ -181,9 +182,10 @@ The result: AI systems that are simultaneously more reliable, more efficient, mo
 
 ### For More Information
 
-- **Technical Details**: See [PROPOSAL.md](PROPOSAL.md) for full architecture specification, training procedures, and evaluation framework
-- **Collaborate**: [Open an issue](https://github.com/ThePharmer/fade/issues) to discuss implementation, ask questions, or propose extensions
+- **Technical Details**: See [technical-proposal.md](technical-proposal.md) for full architecture specification, training procedures, and evaluation framework
+- **Academic Paper**: See [fade-arxiv-final.html](fade-arxiv-final.html) for formal presentation with citations
+- **Collaborate**: Open an issue on GitHub to discuss implementation, ask questions, or propose extensions
 
-**Version**: 1.1  
+**Version**: 1.2  
 **Status**: Conceptual Proposal  
 **Last Updated**: October 2025
