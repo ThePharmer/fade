@@ -18,7 +18,7 @@ Our system makes the AI actually experience uncertain recall, providing a direct
 ### How It Works (Simplified)
 
 **Two Memory Systems**:
-- **Working Memory**: Active information that naturally degrades over time and with lack of use (like human short-term memory)
+- **Working Memory**: Active information that naturally degrades over time and with lack of use (like human memory)
 - **Backup Storage**: Complete, permanent record (like notes or a database)
 
 **Information Strength**:
