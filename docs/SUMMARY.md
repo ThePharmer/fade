@@ -18,7 +18,7 @@ Our system makes the AI actually experience uncertain recall, providing a direct
 ### How It Works (Simplified)
 
 **Two Memory Systems**:
-- **Working Memory**: Active information that naturally degrades over time and with lack of use (like human short-term memory)
+- **Working Memory**: Active information that naturally degrades over time and with lack of use (like human memory)
 - **Backup Storage**: Complete, permanent record (like notes or a database)
 
 **Information Strength**:
@@ -182,8 +182,7 @@ The result: AI systems that are simultaneously more reliable, more efficient, mo
 
 ### For More Information
 
-- **Technical Details**: See [technical-proposal.md](technical-proposal.md) for full architecture specification, training procedures, and evaluation framework
-- **Academic Paper**: See [fade-arxiv-final.html](fade-arxiv-final.html) for formal presentation with citations
+- **Technical Details**: See [PROPOSAL.md](PROPOSAL.md) for full architecture specification, training procedures, and evaluation framework
 - **Collaborate**: Open an issue on GitHub to discuss implementation, ask questions, or propose extensions
 
 **Version**: 1.2  
