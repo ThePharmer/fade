@@ -1,6 +1,6 @@
 # FADE
 
-> **A memory degradation architecture for reliable AI systems**
+**A memory degradation architecture for reliable AI systems**
 
 AI that deliberately forgets like humans do, using memory degradation as an intrinsic confidence signal for reliable decision-making.
 
