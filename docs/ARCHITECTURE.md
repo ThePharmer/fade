@@ -4,15 +4,15 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      FADE SYSTEM                             │
+│                      FADE SYSTEM                                       │
 └─────────────────────────────────────────────────────────────┘
 
 Input Query
     │
     ▼
 ┌──────────────────────┐
-│   Working Memory     │  ← Representations degrade over time
-│  (Active Context)    │  ← Strength based on access patterns
+│   Working Memory         │  ← Representations degrade over time
+│  (Active Context)        │  ← Strength based on access patterns
 └──────────────────────┘
     │
     ▼
@@ -20,30 +20,30 @@ Attempt Retrieval
     │
     ▼
 ┌──────────────────────┐
-│ Fuzziness Detection  │
-│  - Attention entropy │
-│  - Reconstruction    │
-│  - Activation var    │
+│ Fuzziness Detection      │
+│  - Attention entropy     │
+│  - Reconstruction        │
+│  - Activation var        │
 └──────────────────────┘
     │
     ├─── Fuzziness > Threshold? ───┐
     │                               │
     ▼ NO                            ▼ YES
 ┌──────────────────────┐    ┌─────────────────────┐
-│  Answer from         │    │ Query Persistent    │
-│  Working Memory      │    │ Storage (RAG)       │
+│  Answer from             │    │ Query Persistent        │
+│  Working Memory          │    │ Storage (RAG)           │
 └──────────────────────┘    └─────────────────────┘
                                      │
                                      ▼
                             ┌─────────────────────┐
-                            │ Boost strength of   │
-                            │ retrieved info      │
+                            │ Boost strength of       │
+                            │ retrieved info          │
                             └─────────────────────┘
                                      │
                                      ▼
                             ┌─────────────────────┐
-                            │ Generate with       │
-                            │ retrieved context   │
+                            │ Generate with           │
+                            │ retrieved context       │
                             └─────────────────────┘
 ```
 
@@ -72,29 +72,29 @@ Unimportant info degrades below threshold
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Traditional Transformer                   │
-│                                                              │
-│  All context equally accessible (perfect working memory)    │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │ Token 1 │ Token 2 │ Token 3 │ ... │ Token N         │  │
-│  │   100%  │   100%  │   100%  │     │   100%          │  │
-│  └──────────────────────────────────────────────────────┘  │
-│                                                              │
-│  → Must infer confidence from output statistics             │
+│                    Traditional Transformer                             │
+│                                                                        │
+│  All context equally accessible (perfect working memory)               │
+│  ┌──────────────────────────────────────────────────────┐    │
+│  │ Token 1 │ Token 2 │ Token 3 │ ... │ Token N                    │    │
+│  │   100%  │   100%  │   100%  │     │   100%                     │    │
+│  └──────────────────────────────────────────────────────┘    │
+│                                                                        │
+│  → Must infer confidence from output statistics                       │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│                         FADE                                 │
-│                                                              │
-│  Context fidelity varies by importance (degrading memory)   │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │ Token 1 │ Token 2 │ Token 3 │ ... │ Token N         │  │
-│  │   95%   │   40%   │   85%   │     │   20%           │  │
-│  └──────────────────────────────────────────────────────┘  │
-│       ↑        ↓        ↑               ↓                   │
-│    Recent   Unused   Important        Noise                 │
-│                                                              │
-│  → Retrieval difficulty IS the confidence signal            │
+│                         FADE                                           │
+│                                                                        │
+│  Context fidelity varies by importance (degrading memory)              │
+│  ┌──────────────────────────────────────────────────────┐    │
+│  │ Token 1 │ Token 2 │ Token 3 │ ... │ Token N                    │    │
+│  │   95%   │   40%   │   85%   │     │   20%                      │    │
+│  └──────────────────────────────────────────────────────┘    │
+│       ↑        ↓        ↑               ↓                               │
+│    Recent   Unused   Important        Noise                            │
+│                                                                        │
+│  → Retrieval difficulty IS the confidence signal                      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
