@@ -60,7 +60,8 @@ class StrengthTracker(nn.Module):
         self.time_since_access = self.time_since_access + time_delta
 
         # Apply exponential decay
-        decay_factor = torch.exp(-self.config.decay_rate * time_delta)
+        decay_value = torch.tensor(-self.config.decay_rate * time_delta, device=self.strengths.device)
+        decay_factor = torch.exp(decay_value)
         self.strengths = self.strengths * decay_factor
 
         # Enforce minimum strength
