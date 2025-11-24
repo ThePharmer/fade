@@ -216,7 +216,3 @@ class TinyTransformer(nn.Module):
     def get_attention_weights(self) -> list:
         """Get attention weights from all layers for fuzziness detection."""
         return [block.attention.last_attention_weights for block in self.blocks]
-
-    def count_parameters(self) -> int:
-        """Count total trainable parameters."""
-        return sum(p.numel() for p in self.parameters() if p.requires_grad)

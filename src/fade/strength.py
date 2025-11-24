@@ -44,10 +44,20 @@ class StrengthTracker(nn.Module):
     def reset(self, batch_size: int = 1):
         """Reset strength tracking for new sequences."""
         device = self.strengths.device
-        self.strengths = torch.ones(batch_size, self.max_seq_len, device=device) * self.config.base_strength
-        self.time_since_access = torch.zeros(batch_size, self.max_seq_len, device=device)
-        self.access_counts = torch.zeros(batch_size, self.max_seq_len, device=device)
-        self.current_time = torch.tensor(0.0, device=device)
+        current_batch_size = self.strengths.shape[0]
+
+        if batch_size == current_batch_size:
+            # In-place operations preserve buffer registration
+            self.strengths.fill_(self.config.base_strength)
+            self.time_since_access.zero_()
+            self.access_counts.zero_()
+            self.current_time.zero_()
+        else:
+            # Re-register buffers with new batch size
+            self.register_buffer("strengths", torch.ones(batch_size, self.max_seq_len, device=device) * self.config.base_strength)
+            self.register_buffer("time_since_access", torch.zeros(batch_size, self.max_seq_len, device=device))
+            self.register_buffer("access_counts", torch.zeros(batch_size, self.max_seq_len, device=device))
+            self.register_buffer("current_time", torch.tensor(0.0, device=device))
 
     def step(self, time_delta: float = 1.0):
         """
@@ -97,23 +107,6 @@ class StrengthTracker(nn.Module):
         # Clamp to valid range
         self.strengths = torch.clamp(self.strengths, min=self.config.min_strength, max=1.0)
 
-    def access_positions(self, positions: torch.Tensor):
-        """
-        Mark specific positions as accessed (e.g., for retrieval).
-
-        Args:
-            positions: Tensor of position indices to mark as accessed
-        """
-        batch_size = self.strengths.shape[0]
-        for b in range(batch_size):
-            for pos in positions[b]:
-                if pos < self.max_seq_len:
-                    self.time_since_access[b, pos] = 0
-                    self.access_counts[b, pos] += 1
-                    self.strengths[b, pos] += self.config.access_boost
-
-        self.strengths = torch.clamp(self.strengths, min=self.config.min_strength, max=1.0)
-
     def get_strengths(self, seq_len: Optional[int] = None) -> torch.Tensor:
         """
         Get current strength values.
@@ -127,29 +120,6 @@ class StrengthTracker(nn.Module):
         if seq_len is not None:
             return self.strengths[:, :seq_len]
         return self.strengths
-
-    def get_weak_positions(self, threshold: Optional[float] = None) -> torch.Tensor:
-        """
-        Get mask of positions with weak (fuzzy) memories.
-
-        Args:
-            threshold: Strength threshold (default: config.fuzzy_threshold)
-
-        Returns:
-            Boolean mask [batch, seq_len] - True where memory is weak
-        """
-        if threshold is None:
-            threshold = self.config.fuzzy_threshold
-        return self.strengths < threshold
-
-    def get_forgotten_positions(self) -> torch.Tensor:
-        """
-        Get mask of positions that are essentially forgotten.
-
-        Returns:
-            Boolean mask [batch, seq_len] - True where memory is forgotten
-        """
-        return self.strengths < self.config.forget_threshold
 
     def get_statistics(self) -> Dict[str, float]:
         """Get summary statistics about current memory strengths."""

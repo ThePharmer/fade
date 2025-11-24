@@ -66,8 +66,12 @@ class TestTinyTransformer:
 
     def test_parameter_count(self):
         """Test parameter counting."""
-        config = ModelConfig(vocab_size=100, d_model=64, n_heads=2, n_layers=2)
-        model = TinyTransformer(config)
+        config = get_default_config()
+        config.model.vocab_size = 100
+        config.model.d_model = 64
+        config.model.n_heads = 2
+        config.model.n_layers = 2
+        model = FADEModel(config)
 
         num_params = model.count_parameters()
         assert num_params > 0

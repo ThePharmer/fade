@@ -14,22 +14,6 @@ from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, field
 
 
-@dataclass
-class CalibrationBin:
-    """A single bin for calibration computation."""
-    confidence_sum: float = 0.0
-    accuracy_sum: float = 0.0
-    count: int = 0
-
-    @property
-    def avg_confidence(self) -> float:
-        return self.confidence_sum / max(self.count, 1)
-
-    @property
-    def avg_accuracy(self) -> float:
-        return self.accuracy_sum / max(self.count, 1)
-
-
 class ExpectedCalibrationError:
     """
     Computes Expected Calibration Error (ECE).
@@ -44,7 +28,10 @@ class ExpectedCalibrationError:
 
     def reset(self):
         """Reset accumulator."""
-        self.bins = [CalibrationBin() for _ in range(self.n_bins)]
+        # Vectorized bin accumulators instead of list of CalibrationBin objects
+        self.bin_confidence_sum = torch.zeros(self.n_bins, dtype=torch.float64)
+        self.bin_accuracy_sum = torch.zeros(self.n_bins, dtype=torch.float64)
+        self.bin_count = torch.zeros(self.n_bins, dtype=torch.int64)
         self.total_count = 0
 
     def update(
@@ -68,18 +55,21 @@ class ExpectedCalibrationError:
             predictions = predictions[mask.bool()]
             targets = targets[mask.bool()]
 
-        confidences = confidences.view(-1).cpu().numpy()
-        predictions = predictions.view(-1).cpu().numpy()
-        targets = targets.view(-1).cpu().numpy()
+        # Flatten and move to CPU as tensors (not numpy) for vectorized binning
+        confidences = confidences.view(-1).detach().cpu().to(torch.float64)
+        predictions = predictions.view(-1).cpu()
+        targets = targets.view(-1).cpu()
 
-        correct = (predictions == targets).astype(float)
+        correct = (predictions == targets).to(torch.float64)
 
-        for conf, acc in zip(confidences, correct):
-            bin_idx = min(int(conf * self.n_bins), self.n_bins - 1)
-            self.bins[bin_idx].confidence_sum += conf
-            self.bins[bin_idx].accuracy_sum += acc
-            self.bins[bin_idx].count += 1
-            self.total_count += 1
+        # Vectorized binning: compute bin indices for all elements at once
+        bin_indices = (confidences * self.n_bins).long().clamp(0, self.n_bins - 1)
+
+        # Use scatter_add_ for vectorized accumulation
+        self.bin_confidence_sum.scatter_add_(0, bin_indices, confidences)
+        self.bin_accuracy_sum.scatter_add_(0, bin_indices, correct)
+        self.bin_count.scatter_add_(0, bin_indices, torch.ones_like(bin_indices))
+        self.total_count += confidences.numel()
 
     def compute(self) -> Dict[str, float]:
         """
@@ -88,15 +78,30 @@ class ExpectedCalibrationError:
         Returns:
             Dict with ECE, MCE, and per-bin stats
         """
-        ece = 0.0
-        mce = 0.0  # Maximum Calibration Error
+        # Vectorized computation across all bins
+        non_empty_mask = self.bin_count > 0
 
-        for bin_data in self.bins:
-            if bin_data.count > 0:
-                gap = abs(bin_data.avg_accuracy - bin_data.avg_confidence)
-                weight = bin_data.count / max(self.total_count, 1)
-                ece += gap * weight
-                mce = max(mce, gap)
+        if not non_empty_mask.any():
+            return {"ece": 0.0, "mce": 0.0, "total_samples": 0}
+
+        # Compute average confidence and accuracy per bin (only for non-empty bins)
+        avg_confidence = torch.zeros(self.n_bins, dtype=torch.float64)
+        avg_accuracy = torch.zeros(self.n_bins, dtype=torch.float64)
+
+        avg_confidence[non_empty_mask] = (
+            self.bin_confidence_sum[non_empty_mask] / self.bin_count[non_empty_mask].to(torch.float64)
+        )
+        avg_accuracy[non_empty_mask] = (
+            self.bin_accuracy_sum[non_empty_mask] / self.bin_count[non_empty_mask].to(torch.float64)
+        )
+
+        # Compute calibration gaps
+        gaps = torch.abs(avg_accuracy - avg_confidence)
+        weights = self.bin_count.to(torch.float64) / max(self.total_count, 1)
+
+        # ECE is weighted average of gaps, MCE is maximum gap
+        ece = (gaps * weights).sum().item()
+        mce = gaps[non_empty_mask].max().item() if non_empty_mask.any() else 0.0
 
         return {
             "ece": ece,
@@ -110,6 +115,9 @@ class FuzzinessErrorCorrelation:
     Tracks correlation between fuzziness and prediction errors.
 
     This is the key metric for FADE: high fuzziness should predict errors.
+
+    Uses Welford's online algorithm for numerically stable running statistics,
+    avoiding unbounded memory growth from storing all values.
     """
 
     def __init__(self):
@@ -117,8 +125,20 @@ class FuzzinessErrorCorrelation:
 
     def reset(self):
         """Reset accumulator."""
-        self.fuzziness_values: List[float] = []
-        self.error_values: List[float] = []
+        # Running statistics using Welford's online algorithm
+        # For correlation, we track: n, sum_x, sum_y, sum_xx, sum_yy, sum_xy
+        self.n = 0  # Count
+        self.sum_x = 0.0  # Sum of fuzziness values
+        self.sum_y = 0.0  # Sum of error values
+        self.sum_xx = 0.0  # Sum of fuzziness^2
+        self.sum_yy = 0.0  # Sum of error^2
+        self.sum_xy = 0.0  # Sum of fuzziness * error
+
+        # For separation metric: track fuzziness sums for errors vs correct
+        self.n_errors = 0
+        self.n_correct = 0
+        self.sum_fuzz_errors = 0.0
+        self.sum_fuzz_correct = 0.0
 
     def update(
         self,
@@ -141,50 +161,77 @@ class FuzzinessErrorCorrelation:
             predictions = predictions[mask.bool()]
             targets = targets[mask.bool()]
 
-        fuzziness = fuzziness.view(-1).detach().cpu().numpy()
-        predictions = predictions.view(-1).cpu().numpy()
-        targets = targets.view(-1).cpu().numpy()
+        # Flatten and move to CPU as float64 tensors for numerical stability
+        fuzziness = fuzziness.view(-1).detach().cpu().to(torch.float64)
+        predictions = predictions.view(-1).cpu()
+        targets = targets.view(-1).cpu()
 
-        errors = (predictions != targets).astype(float)
+        errors = (predictions != targets).to(torch.float64)
 
-        self.fuzziness_values.extend(fuzziness.tolist())
-        self.error_values.extend(errors.tolist())
+        # Vectorized running statistics update
+        batch_n = fuzziness.numel()
+        if batch_n == 0:
+            return
+
+        # Update running sums for correlation computation
+        self.n += batch_n
+        self.sum_x += fuzziness.sum().item()
+        self.sum_y += errors.sum().item()
+        self.sum_xx += (fuzziness * fuzziness).sum().item()
+        self.sum_yy += (errors * errors).sum().item()
+        self.sum_xy += (fuzziness * errors).sum().item()
+
+        # Update separation statistics
+        error_mask = errors > 0.5
+        correct_mask = ~error_mask
+
+        self.n_errors += error_mask.sum().item()
+        self.n_correct += correct_mask.sum().item()
+        self.sum_fuzz_errors += fuzziness[error_mask].sum().item()
+        self.sum_fuzz_correct += fuzziness[correct_mask].sum().item()
 
     def compute(self) -> Dict[str, float]:
         """
-        Compute correlation metrics.
+        Compute correlation metrics from running statistics.
 
         Returns:
             Dict with correlation and related stats
         """
-        if len(self.fuzziness_values) < 2:
+        if self.n < 2:
             return {"correlation": 0.0, "samples": 0}
 
-        fuzz_arr = np.array(self.fuzziness_values)
-        err_arr = np.array(self.error_values)
+        # Compute Pearson correlation from running statistics
+        # r = (n*sum_xy - sum_x*sum_y) / sqrt((n*sum_xx - sum_x^2) * (n*sum_yy - sum_y^2))
+        n = self.n
+        numerator = n * self.sum_xy - self.sum_x * self.sum_y
+        var_x = n * self.sum_xx - self.sum_x * self.sum_x
+        var_y = n * self.sum_yy - self.sum_y * self.sum_y
 
-        # Pearson correlation
-        correlation = np.corrcoef(fuzz_arr, err_arr)[0, 1]
-        if np.isnan(correlation):
+        if var_x > 0 and var_y > 0:
+            correlation = numerator / np.sqrt(var_x * var_y)
+            if np.isnan(correlation):
+                correlation = 0.0
+        else:
             correlation = 0.0
 
-        # Compute AUC-like metric: can fuzziness separate errors from correct?
-        error_mask = err_arr > 0.5
-        correct_mask = ~error_mask
-
-        if error_mask.sum() > 0 and correct_mask.sum() > 0:
-            avg_fuzz_errors = fuzz_arr[error_mask].mean()
-            avg_fuzz_correct = fuzz_arr[correct_mask].mean()
+        # Compute separation metric
+        if self.n_errors > 0 and self.n_correct > 0:
+            avg_fuzz_errors = self.sum_fuzz_errors / self.n_errors
+            avg_fuzz_correct = self.sum_fuzz_correct / self.n_correct
             separation = avg_fuzz_errors - avg_fuzz_correct
         else:
             separation = 0.0
 
+        # Compute averages
+        avg_fuzziness = self.sum_x / n if n > 0 else 0.0
+        avg_error_rate = self.sum_y / n if n > 0 else 0.0
+
         return {
             "correlation": correlation,
             "separation": separation,  # Positive = fuzziness higher for errors (good!)
-            "avg_fuzziness": fuzz_arr.mean(),
-            "avg_error_rate": err_arr.mean(),
-            "samples": len(self.fuzziness_values),
+            "avg_fuzziness": avg_fuzziness,
+            "avg_error_rate": avg_error_rate,
+            "samples": self.n,
         }
 
 
