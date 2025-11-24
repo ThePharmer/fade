@@ -127,26 +127,6 @@ class KeyValueMemorizationDataset(Dataset):
         target_seq = torch.tensor(sequence[1:], dtype=torch.long)
         return input_seq, target_seq
 
-    def create_query_sequence(self, pair: KeyValuePair) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Create a query sequence (evaluation).
-
-        Input: [KEY_START] key [KEY_END] [QUERY]
-        Target: value tokens
-        """
-        query = [self.KEY_START] + pair.key + [self.KEY_END] + [self.QUERY]
-        # Pad to allow autoregressive generation of value
-        input_seq = torch.tensor(query, dtype=torch.long)
-        target_value = torch.tensor(pair.value, dtype=torch.long)
-
-        # Create full target sequence
-        full_target = torch.tensor(
-            query[1:] + pair.value + [self.VAL_END],
-            dtype=torch.long
-        )
-
-        return input_seq, target_value, full_target
-
     def get_time_since_creation(self, idx: int) -> int:
         """Get time since pair was created."""
         return self.current_time - self.pairs[idx].creation_time

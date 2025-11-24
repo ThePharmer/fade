@@ -48,7 +48,7 @@ class FuzzinessDetector(nn.Module):
     def compute_attention_entropy(
         self,
         attention_weights: List[torch.Tensor],
-    ) -> torch.Tensor:
+    ) -> Optional[torch.Tensor]:
         """
         Compute entropy of attention distributions.
 
@@ -244,52 +244,3 @@ class FuzzinessDetector(nn.Module):
         fuzziness, _ = self.compute_fuzziness(hidden_states, attention_weights, original_embeddings)
         retrieve_mask = self.should_retrieve(fuzziness)
         return fuzziness, retrieve_mask
-
-
-class RetrievalDecision(nn.Module):
-    """
-    Makes final retrieval decisions based on fuzziness and context.
-
-    Can learn to adjust threshold based on:
-    - Task difficulty
-    - Computational budget
-    - Historical accuracy
-    """
-
-    def __init__(self, d_model: int, base_threshold: float = 0.6):
-        super().__init__()
-        self.base_threshold = base_threshold
-
-        # Learned threshold adjustment
-        self.threshold_net = nn.Sequential(
-            nn.Linear(d_model, 64),
-            nn.GELU(),
-            nn.Linear(64, 1),
-            nn.Sigmoid(),
-        )
-
-    def forward(
-        self,
-        fuzziness: torch.Tensor,
-        context: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Decide whether to retrieve.
-
-        Args:
-            fuzziness: Fuzziness scores [batch, seq_len]
-            context: Context representation [batch, d_model]
-
-        Returns:
-            Tuple of:
-                - Retrieval decisions [batch, seq_len]
-                - Adjusted threshold [batch, 1]
-        """
-        # Compute context-dependent threshold adjustment
-        threshold_adjust = self.threshold_net(context)  # [batch, 1]
-        adjusted_threshold = self.base_threshold * (0.5 + threshold_adjust)  # Range: [0.3, 0.9] * base
-
-        # Make decisions
-        decisions = fuzziness > adjusted_threshold
-
-        return decisions, adjusted_threshold

@@ -8,6 +8,7 @@ Implements the three-phase training procedure:
 """
 
 import time
+import warnings
 from typing import Dict, Optional, Callable
 from dataclasses import dataclass
 
@@ -155,9 +156,6 @@ class FADETrainer:
             targets = batch["targets"].to(self.device)
             mask = batch["mask"].to(self.device)
 
-            # Forward pass without degradation first (baseline)
-            output_clean = self.model(input_ids, apply_degradation=False, return_fuzziness=True)
-
             # Forward pass with degradation
             output_degraded = self.model(input_ids, apply_degradation=True, return_fuzziness=True)
 
@@ -268,8 +266,35 @@ class FADETrainer:
         print(f"Saved checkpoint to {path}")
 
     def load_checkpoint(self, path: str):
-        """Load model checkpoint."""
-        checkpoint = torch.load(path, map_location=self.device)
+        """Load model checkpoint.
+
+        Security Note: This method uses pickle-based deserialization which can
+        execute arbitrary code. Only load checkpoints from trusted sources.
+        """
+        # Security warning for untrusted sources
+        warnings.warn(
+            "Loading checkpoints uses pickle deserialization which can execute "
+            "arbitrary code. Only load checkpoints from trusted sources.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+        # SECURITY: weights_only=False is required because TrainingState is a
+        # dataclass that cannot be loaded with weights_only=True. This is a
+        # known security consideration (CWE-502). Only load checkpoints from
+        # trusted sources to mitigate arbitrary code execution risks.
+        checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+
+        # Validate checkpoint structure before using it
+        expected_keys = {"model_state_dict", "optimizer_state_dict", "scheduler_state_dict", "state", "config"}
+        actual_keys = set(checkpoint.keys())
+        if not expected_keys.issubset(actual_keys):
+            missing_keys = expected_keys - actual_keys
+            raise ValueError(
+                f"Invalid checkpoint format. Missing required keys: {missing_keys}. "
+                f"Expected keys: {expected_keys}, got: {actual_keys}"
+            )
+
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])

@@ -55,40 +55,6 @@ class DegradationModule(nn.Module):
 
         return x + noise
 
-    def apply_attention_masking(
-        self,
-        attention_scores: torch.Tensor,
-        strengths: torch.Tensor,
-    ) -> torch.Tensor:
-        """
-        Apply strength-based temperature scaling to attention.
-
-        Weak memories get higher temperature (softer attention distribution),
-        making them less precise in what they attend to.
-
-        Args:
-            attention_scores: Raw attention scores [batch, heads, seq, seq]
-            strengths: Strength values [batch, seq_len]
-
-        Returns:
-            Modified attention scores
-        """
-        # Compute temperature based on weakness
-        # Weak memories -> high temperature -> softer attention
-        weakness = 1 - strengths  # [batch, seq_len]
-        temperature = 1.0 + (self.config.mask_temperature - 1.0) * weakness
-
-        # Apply to both query and key dimensions
-        # Temperature for queries (rows)
-        temp_q = temperature.unsqueeze(1).unsqueeze(-1)  # [batch, 1, seq, 1]
-        # Temperature for keys (columns)
-        temp_k = temperature.unsqueeze(1).unsqueeze(2)  # [batch, 1, 1, seq]
-
-        # Combined temperature effect
-        combined_temp = (temp_q + temp_k) / 2
-
-        return attention_scores / combined_temp
-
     def quantize(
         self,
         x: torch.Tensor,
@@ -172,50 +138,3 @@ class DegradationModule(nn.Module):
             return x
         else:
             raise ValueError(f"Unknown degradation method: {method}")
-
-
-class GradualDegradation(nn.Module):
-    """
-    Applies degradation gradually over multiple time steps.
-
-    Useful for simulating memory decay during inference.
-    """
-
-    def __init__(self, config: DegradationConfig):
-        super().__init__()
-        self.degradation = DegradationModule(config)
-
-    def forward(
-        self,
-        x: torch.Tensor,
-        initial_strengths: torch.Tensor,
-        time_steps: int,
-        decay_rate: float = 0.1,
-    ) -> tuple:
-        """
-        Apply gradual degradation over multiple time steps.
-
-        Args:
-            x: Input tensor [batch, seq_len, d_model]
-            initial_strengths: Starting strength values [batch, seq_len]
-            time_steps: Number of time steps to simulate
-            decay_rate: Decay rate per step
-
-        Returns:
-            Tuple of (final_x, final_strengths, trajectory)
-        """
-        current_x = x
-        current_strengths = initial_strengths
-        trajectory = [(current_x.clone(), current_strengths.clone())]
-
-        for _ in range(time_steps):
-            # Decay strengths
-            current_strengths = current_strengths * (1 - decay_rate)
-            current_strengths = current_strengths.clamp(min=0.01)
-
-            # Apply degradation
-            current_x = self.degradation(current_x, current_strengths)
-
-            trajectory.append((current_x.clone(), current_strengths.clone()))
-
-        return current_x, current_strengths, trajectory
