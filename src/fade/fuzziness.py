@@ -5,10 +5,15 @@ Detects when memories are "fuzzy" (uncertain/degraded) and should
 trigger retrieval from persistent storage.
 """
 
+from __future__ import annotations
+
+__all__ = [
+    "FuzzinessDetector",
+]
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Dict, Optional, Tuple, List
 
 from .config import FuzzinessConfig
 
@@ -43,12 +48,34 @@ class FuzzinessDetector(nn.Module):
         self.register_buffer("num_batches", torch.tensor(0.0))
 
         # Store component scores for analysis
-        self.last_component_scores: Dict[str, torch.Tensor] = {}
+        self.last_component_scores: dict[str, torch.Tensor] = {}
+
+    def reset_running_stats(self) -> None:
+        """
+        Reset running statistics to initial values.
+
+        This method should be called between epochs to prevent statistics
+        from accumulating across epochs, which can lead to stale baseline
+        values that don't reflect the current epoch's data distribution.
+
+        The running statistics are used by compute_activation_variance()
+        to detect anomalous variance patterns. Resetting ensures each epoch
+        starts with fresh statistics.
+
+        Example usage in training loop:
+            for epoch in range(num_epochs):
+                fuzziness_detector.reset_running_stats()
+                for batch in dataloader:
+                    # training step
+        """
+        self.running_mean.zero_()
+        self.running_var.fill_(1.0)
+        self.num_batches.zero_()
 
     def compute_attention_entropy(
         self,
-        attention_weights: List[torch.Tensor],
-    ) -> Optional[torch.Tensor]:
+        attention_weights: list[torch.Tensor],
+    ) -> torch.Tensor | None:
         """
         Compute entropy of attention distributions.
 
@@ -84,7 +111,7 @@ class FuzzinessDetector(nn.Module):
     def compute_reconstruction_error(
         self,
         hidden_states: torch.Tensor,
-        original_embeddings: Optional[torch.Tensor] = None,
+        original_embeddings: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Compute reconstruction error.
@@ -138,7 +165,7 @@ class FuzzinessDetector(nn.Module):
             batch_var = hidden_states.var(dim=(0, 1))
 
             # Exponential moving average
-            momentum = 0.1
+            momentum = self.config.ema_momentum
             self.running_mean = (1 - momentum) * self.running_mean + momentum * batch_mean
             self.running_var = (1 - momentum) * self.running_var + momentum * batch_var
             self.num_batches = self.num_batches + 1
@@ -156,9 +183,9 @@ class FuzzinessDetector(nn.Module):
     def compute_fuzziness(
         self,
         hidden_states: torch.Tensor,
-        attention_weights: Optional[List[torch.Tensor]] = None,
-        original_embeddings: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+        attention_weights: list[torch.Tensor] | None = None,
+        original_embeddings: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """
         Compute overall fuzziness score.
 
@@ -208,7 +235,7 @@ class FuzzinessDetector(nn.Module):
     def should_retrieve(
         self,
         fuzziness: torch.Tensor,
-        threshold: Optional[float] = None,
+        threshold: float | None = None,
     ) -> torch.Tensor:
         """
         Determine which positions should trigger retrieval.
@@ -227,9 +254,9 @@ class FuzzinessDetector(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_weights: Optional[List[torch.Tensor]] = None,
-        original_embeddings: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        attention_weights: list[torch.Tensor] | None = None,
+        original_embeddings: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass.
 

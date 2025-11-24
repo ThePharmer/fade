@@ -13,7 +13,13 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from .config import FADEConfig, get_default_config
+from .config import (
+    FADEConfig,
+    ModelConfig,
+    StrengthConfig,
+    DegradationConfig,
+    TrainingConfig,
+)
 from .fade_model import FADEModel
 from .data import create_data_loaders
 from .trainer import FADETrainer, BaselineTrainer
@@ -191,24 +197,34 @@ def main():
 
     args = parser.parse_args()
 
-    # Build config
-    config = get_default_config()
-    config.seed = args.seed
-    config.device = args.device
-
-    config.training.num_epochs = args.epochs
-    config.training.batch_size = args.batch_size
-    config.training.learning_rate = args.lr
-    config.training.num_key_value_pairs = args.num_pairs
-    config.training.key_length = args.key_length
-    config.training.value_length = args.value_length
-
-    config.model.d_model = args.d_model
-    config.model.n_layers = args.n_layers
-    config.model.n_heads = args.n_heads
-
-    config.strength.decay_rate = args.decay_rate
-    config.degradation.method = args.degradation
+    # Build config with frozen dataclasses - construct with values upfront
+    model_config = ModelConfig(
+        d_model=args.d_model,
+        n_layers=args.n_layers,
+        n_heads=args.n_heads,
+    )
+    training_config = TrainingConfig(
+        num_epochs=args.epochs,
+        batch_size=args.batch_size,
+        learning_rate=args.lr,
+        num_key_value_pairs=args.num_pairs,
+        key_length=args.key_length,
+        value_length=args.value_length,
+    )
+    strength_config = StrengthConfig(
+        decay_rate=args.decay_rate,
+    )
+    degradation_config = DegradationConfig(
+        method=args.degradation,
+    )
+    config = FADEConfig(
+        model=model_config,
+        training=training_config,
+        strength=strength_config,
+        degradation=degradation_config,
+        seed=args.seed,
+        device=args.device,
+    )
 
     print_config(config)
 

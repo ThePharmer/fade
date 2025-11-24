@@ -5,9 +5,14 @@ Tracks the "strength" of memories over time, implementing the core
 degradation dynamics: memories decay unless they are accessed.
 """
 
+from __future__ import annotations
+
+__all__ = [
+    "StrengthTracker",
+]
+
 import torch
 import torch.nn as nn
-from typing import Optional, Dict, Tuple
 
 from .config import StrengthConfig
 
@@ -96,7 +101,7 @@ class StrengthTracker(nn.Module):
         self.strengths[:, :seq_len] = self.strengths[:, :seq_len] + boost
 
         # Update access tracking for positions with significant attention
-        significant_attention = attention_received > 0.1  # threshold
+        significant_attention = attention_received > self.config.significant_attention_threshold
         self.time_since_access[:, :seq_len] = torch.where(
             significant_attention,
             torch.zeros_like(self.time_since_access[:, :seq_len]),
@@ -107,7 +112,7 @@ class StrengthTracker(nn.Module):
         # Clamp to valid range
         self.strengths = torch.clamp(self.strengths, min=self.config.min_strength, max=1.0)
 
-    def get_strengths(self, seq_len: Optional[int] = None) -> torch.Tensor:
+    def get_strengths(self, seq_len: int | None = None) -> torch.Tensor:
         """
         Get current strength values.
 
@@ -121,7 +126,7 @@ class StrengthTracker(nn.Module):
             return self.strengths[:, :seq_len]
         return self.strengths
 
-    def get_statistics(self) -> Dict[str, float]:
+    def get_statistics(self) -> dict[str, float]:
         """Get summary statistics about current memory strengths."""
         return {
             "mean_strength": self.strengths.mean().item(),
