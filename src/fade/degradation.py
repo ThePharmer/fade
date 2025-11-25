@@ -5,10 +5,15 @@ Implements mechanisms to degrade representations based on memory strength.
 Weaker memories become "fuzzier" - noisier, less precise representations.
 """
 
+from __future__ import annotations
+
+__all__ = [
+    "DegradationModule",
+]
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional
 
 from .config import DegradationConfig
 

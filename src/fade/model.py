@@ -5,8 +5,16 @@ A minimal transformer architecture designed to run on CPU
 while still demonstrating the core FADE mechanisms.
 """
 
+from __future__ import annotations
+
+__all__ = [
+    "MultiHeadAttention",
+    "FeedForward",
+    "TransformerBlock",
+    "TinyTransformer",
+]
+
 import math
-from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -20,6 +28,7 @@ class MultiHeadAttention(nn.Module):
 
     def __init__(self, config: ModelConfig):
         super().__init__()
+        self.config = config
         self.n_heads = config.n_heads
         self.d_head = config.d_head
         self.d_model = config.d_model
@@ -33,13 +42,13 @@ class MultiHeadAttention(nn.Module):
         self.scale = math.sqrt(self.d_head)
 
         # Store attention weights for fuzziness detection
-        self.last_attention_weights: Optional[torch.Tensor] = None
+        self.last_attention_weights: torch.Tensor | None = None
 
     def forward(
         self,
         x: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
-        strength_weights: Optional[torch.Tensor] = None,
+        mask: torch.Tensor | None = None,
+        strength_weights: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Forward pass with optional strength-based attention modulation.
@@ -52,6 +61,11 @@ class MultiHeadAttention(nn.Module):
         Returns:
             Output tensor [batch, seq_len, d_model]
         """
+        # Clear stale attention weights from previous forward pass to prevent memory leak
+        if self.last_attention_weights is not None:
+            del self.last_attention_weights
+        self.last_attention_weights = None
+
         batch_size, seq_len, _ = x.shape
 
         # Project to Q, K, V
@@ -74,7 +88,7 @@ class MultiHeadAttention(nn.Module):
             # Expand for broadcasting: [batch, 1, 1, seq_len]
             strength_expanded = strength_weights.unsqueeze(1).unsqueeze(2)
             # Reduce attention to weak memories by adding negative bias
-            weakness_penalty = (1 - strength_expanded) * -2.0
+            weakness_penalty = (1 - strength_expanded) * self.config.weakness_penalty
             scores = scores + weakness_penalty
 
         # Apply mask if provided
@@ -103,6 +117,7 @@ class FeedForward(nn.Module):
 
     def __init__(self, config: ModelConfig):
         super().__init__()
+        self.config = config
         self.linear1 = nn.Linear(config.d_model, config.d_ff)
         self.linear2 = nn.Linear(config.d_ff, config.d_model)
         self.dropout = nn.Dropout(config.dropout)
@@ -116,6 +131,7 @@ class TransformerBlock(nn.Module):
 
     def __init__(self, config: ModelConfig):
         super().__init__()
+        self.config = config
         self.attention = MultiHeadAttention(config)
         self.ff = FeedForward(config)
         self.norm1 = nn.LayerNorm(config.d_model)
@@ -125,8 +141,8 @@ class TransformerBlock(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
-        strength_weights: Optional[torch.Tensor] = None,
+        mask: torch.Tensor | None = None,
+        strength_weights: torch.Tensor | None = None,
     ) -> torch.Tensor:
         # Self-attention with residual
         attn_out = self.attention(self.norm1(x), mask, strength_weights)
@@ -150,6 +166,7 @@ class TinyTransformer(nn.Module):
     def __init__(self, config: ModelConfig):
         super().__init__()
         self.config = config
+        self.config = config
 
         # Embeddings
         self.token_embedding = nn.Embedding(config.vocab_size, config.d_model)
@@ -166,22 +183,22 @@ class TinyTransformer(nn.Module):
         self.apply(self._init_weights)
 
         # Store intermediate activations for fuzziness detection
-        self.last_hidden_states: Optional[torch.Tensor] = None
+        self.last_hidden_states: torch.Tensor | None = None
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            torch.nn.init.normal_(module.weight, mean=0.0, std=self.config.weight_init_std)
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            torch.nn.init.normal_(module.weight, mean=0.0, std=self.config.weight_init_std)
 
     def forward(
         self,
         input_ids: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
-        strength_weights: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        mask: torch.Tensor | None = None,
+        strength_weights: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass.
 
@@ -204,7 +221,9 @@ class TinyTransformer(nn.Module):
         for block in self.blocks:
             x = block(x, mask, strength_weights)
 
-        # Store hidden states for fuzziness detection
+        # Store hidden states for fuzziness detection (clear previous to prevent memory leak)
+        if self.last_hidden_states is not None:
+            del self.last_hidden_states
         self.last_hidden_states = x.detach()
 
         # Output projection

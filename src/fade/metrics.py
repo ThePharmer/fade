@@ -7,10 +7,18 @@ Includes:
 - Retrieval Precision/Recall
 """
 
+from __future__ import annotations
+
+__all__ = [
+    "ExpectedCalibrationError",
+    "FuzzinessErrorCorrelation",
+    "RetrievalMetrics",
+    "MetricsTracker",
+]
+
 import torch
 import torch.nn.functional as F
 import numpy as np
-from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, field
 
 
@@ -39,7 +47,7 @@ class ExpectedCalibrationError:
         confidences: torch.Tensor,
         predictions: torch.Tensor,
         targets: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
+        mask: torch.Tensor | None = None,
     ):
         """
         Update bins with new predictions.
@@ -71,7 +79,7 @@ class ExpectedCalibrationError:
         self.bin_count.scatter_add_(0, bin_indices, torch.ones_like(bin_indices))
         self.total_count += confidences.numel()
 
-    def compute(self) -> Dict[str, float]:
+    def compute(self) -> dict[str, float]:
         """
         Compute ECE and related metrics.
 
@@ -145,7 +153,7 @@ class FuzzinessErrorCorrelation:
         fuzziness: torch.Tensor,
         predictions: torch.Tensor,
         targets: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
+        mask: torch.Tensor | None = None,
     ):
         """
         Update with new batch.
@@ -190,7 +198,7 @@ class FuzzinessErrorCorrelation:
         self.sum_fuzz_errors += fuzziness[error_mask].sum().item()
         self.sum_fuzz_correct += fuzziness[correct_mask].sum().item()
 
-    def compute(self) -> Dict[str, float]:
+    def compute(self) -> dict[str, float]:
         """
         Compute correlation metrics from running statistics.
 
@@ -256,7 +264,7 @@ class RetrievalMetrics:
         self,
         retrieved: torch.Tensor,  # Boolean: did we retrieve?
         was_error: torch.Tensor,  # Boolean: was the prediction wrong?
-        mask: Optional[torch.Tensor] = None,
+        mask: torch.Tensor | None = None,
     ):
         """
         Update metrics.
@@ -278,7 +286,7 @@ class RetrievalMetrics:
         self.false_negatives += (~retrieved & was_error).sum().item()
         self.true_negatives += (~retrieved & ~was_error).sum().item()
 
-    def compute(self) -> Dict[str, float]:
+    def compute(self) -> dict[str, float]:
         """Compute precision, recall, F1."""
         precision = self.true_positives / max(self.true_positives + self.false_positives, 1)
         recall = self.true_positives / max(self.true_positives + self.false_negatives, 1)
@@ -330,8 +338,8 @@ class MetricsTracker:
         targets: torch.Tensor,
         fuzziness: torch.Tensor,
         should_retrieve: torch.Tensor,
-        losses: Dict[str, torch.Tensor],
-        mask: Optional[torch.Tensor] = None,
+        losses: dict[str, torch.Tensor],
+        mask: torch.Tensor | None = None,
     ):
         """Update all metrics with a batch."""
         # Get predictions and confidences
@@ -350,7 +358,7 @@ class MetricsTracker:
         self.calibration_loss += losses.get("calibration_loss", torch.tensor(0.0)).item()
         self.num_batches += 1
 
-    def compute_all(self) -> Dict[str, float]:
+    def compute_all(self) -> dict[str, float]:
         """Compute all metrics."""
         results = {}
 

@@ -6,8 +6,17 @@ Creates a key-value memorization task:
 - We control when information was "seen" to test memory decay
 """
 
+from __future__ import annotations
+
+__all__ = [
+    "KeyValuePair",
+    "KeyValueMemorizationDataset",
+    "MemorizationCollator",
+    "create_data_loaders",
+]
+
 import random
-from typing import Dict, List, Tuple, Optional
+import warnings
 from dataclasses import dataclass
 
 import torch
@@ -17,8 +26,8 @@ from torch.utils.data import Dataset, DataLoader
 @dataclass
 class KeyValuePair:
     """A single key-value pair for memorization."""
-    key: List[int]
-    value: List[int]
+    key: list[int]
+    value: list[int]
     creation_time: int = 0
     access_count: int = 0
     last_access_time: int = 0
@@ -65,8 +74,9 @@ class KeyValueMemorizationDataset(Dataset):
         self.value_length = value_length
         self.vocab_size = vocab_size
 
-        random.seed(seed)
-        torch.manual_seed(seed)
+        # Use local random generators to avoid polluting global state
+        self._rng = random.Random(seed)
+        self._torch_generator = torch.Generator().manual_seed(seed)
 
         # Generate key-value pairs
         self.pairs = self._generate_pairs()
@@ -74,7 +84,7 @@ class KeyValueMemorizationDataset(Dataset):
         # Track access history for decay simulation
         self.current_time = 0
 
-    def _generate_pairs(self) -> List[KeyValuePair]:
+    def _generate_pairs(self) -> list[KeyValuePair]:
         """Generate unique key-value pairs."""
         pairs = []
         used_keys = set()
@@ -84,14 +94,14 @@ class KeyValueMemorizationDataset(Dataset):
         for i in range(self.num_pairs):
             # Generate unique key
             while True:
-                key = random.choices(available_tokens, k=self.key_length)
+                key = self._rng.choices(available_tokens, k=self.key_length)
                 key_tuple = tuple(key)
                 if key_tuple not in used_keys:
                     used_keys.add(key_tuple)
                     break
 
             # Generate value
-            value = random.choices(available_tokens, k=self.value_length)
+            value = self._rng.choices(available_tokens, k=self.value_length)
 
             pairs.append(KeyValuePair(
                 key=key,
@@ -112,7 +122,7 @@ class KeyValueMemorizationDataset(Dataset):
         """Advance simulation time."""
         self.current_time += steps
 
-    def create_memorization_sequence(self, pair: KeyValuePair) -> Tuple[torch.Tensor, torch.Tensor]:
+    def create_memorization_sequence(self, pair: KeyValuePair) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Create a sequence for memorization (training).
 
@@ -141,7 +151,7 @@ class KeyValueMemorizationDataset(Dataset):
     def __len__(self) -> int:
         return self.num_pairs
 
-    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         pair = self.get_pair(idx)
         input_seq, target_seq = self.create_memorization_sequence(pair)
 
@@ -162,46 +172,55 @@ class MemorizationCollator:
         self.pad_token = pad_token
         self.max_len = max_len
 
-    def __call__(self, batch: List[Dict]) -> Dict[str, torch.Tensor]:
+    def __call__(self, batch: list[dict]) -> dict[str, torch.Tensor]:
         # Find max length in batch
+        batch_size = len(batch)
         max_len = min(max(len(item["input_ids"]) for item in batch), self.max_len)
 
-        input_ids = []
-        targets = []
-        masks = []
-        metadata = {
-            "pair_idx": [],
-            "time_since_creation": [],
-            "time_since_access": [],
-            "access_count": [],
-        }
+        # Pre-allocate output tensors (avoids creating many small tensors)
+        input_ids = torch.full((batch_size, max_len), self.pad_token, dtype=torch.long)
+        targets = torch.full((batch_size, max_len), self.pad_token, dtype=torch.long)
+        masks = torch.zeros((batch_size, max_len), dtype=torch.float)
 
-        for item in batch:
+        # Pre-allocate metadata tensors
+        pair_idx = torch.empty(batch_size, dtype=torch.long)
+        time_since_creation = torch.empty(batch_size, dtype=torch.long)
+        time_since_access = torch.empty(batch_size, dtype=torch.long)
+        access_count = torch.empty(batch_size, dtype=torch.long)
+
+        # Fill tensors in-place
+        for i, item in enumerate(batch):
             seq_len = len(item["input_ids"])
-            pad_len = max_len - seq_len
 
-            # Pad sequences
-            input_ids.append(
-                torch.cat([item["input_ids"], torch.full((pad_len,), self.pad_token)])
-            )
-            targets.append(
-                torch.cat([item["targets"], torch.full((pad_len,), self.pad_token)])
-            )
-            masks.append(
-                torch.cat([torch.ones(seq_len), torch.zeros(pad_len)])
-            )
+            # Warn if truncation is occurring
+            if seq_len > max_len:
+                warnings.warn(
+                    f"Sequence truncated from {seq_len} to {max_len} tokens. "
+                    f"Consider increasing max_len (currently {self.max_len}) to avoid data loss.",
+                    UserWarning,
+                    stacklevel=2,
+                )
 
-            # Collect metadata
-            metadata["pair_idx"].append(item["pair_idx"])
-            metadata["time_since_creation"].append(item["time_since_creation"])
-            metadata["time_since_access"].append(item["time_since_access"])
-            metadata["access_count"].append(item["access_count"])
+            # Copy data (truncating if necessary)
+            truncated_len = min(seq_len, max_len)
+            input_ids[i, :truncated_len] = item["input_ids"][:truncated_len]
+            targets[i, :truncated_len] = item["targets"][:truncated_len]
+            masks[i, :truncated_len] = 1.0
+
+            # Fill metadata
+            pair_idx[i] = item["pair_idx"]
+            time_since_creation[i] = item["time_since_creation"]
+            time_since_access[i] = item["time_since_access"]
+            access_count[i] = item["access_count"]
 
         return {
-            "input_ids": torch.stack(input_ids),
-            "targets": torch.stack(targets),
-            "mask": torch.stack(masks),
-            **{k: torch.tensor(v) for k, v in metadata.items()},
+            "input_ids": input_ids,
+            "targets": targets,
+            "mask": masks,
+            "pair_idx": pair_idx,
+            "time_since_creation": time_since_creation,
+            "time_since_access": time_since_access,
+            "access_count": access_count,
         }
 
 
@@ -213,7 +232,7 @@ def create_data_loaders(
     batch_size: int = 32,
     train_split: float = 0.8,
     seed: int = 42,
-) -> Tuple[DataLoader, DataLoader, KeyValueMemorizationDataset]:
+) -> tuple[DataLoader, DataLoader, KeyValueMemorizationDataset]:
     """
     Create train and eval data loaders.
 
@@ -239,11 +258,16 @@ def create_data_loaders(
 
     collator = MemorizationCollator(pad_token=dataset.PAD)
 
+    # Enable pin_memory only when CUDA is available for faster host-to-device transfer
+    pin_memory = torch.cuda.is_available()
+
     train_loader = DataLoader(
         train_subset,
         batch_size=batch_size,
         shuffle=True,
         collate_fn=collator,
+        num_workers=2,
+        pin_memory=pin_memory,
     )
 
     eval_loader = DataLoader(
@@ -251,6 +275,8 @@ def create_data_loaders(
         batch_size=batch_size,
         shuffle=False,
         collate_fn=collator,
+        num_workers=2,
+        pin_memory=pin_memory,
     )
 
     return train_loader, eval_loader, dataset
