@@ -66,11 +66,8 @@ class TestTinyTransformer:
 
     def test_parameter_count(self):
         """Test parameter counting."""
-        config = get_default_config()
-        config.model.vocab_size = 100
-        config.model.d_model = 64
-        config.model.n_heads = 2
-        config.model.n_layers = 2
+        model_config = ModelConfig(vocab_size=100, d_model=64, n_heads=2, n_layers=2)
+        config = FADEConfig(model=model_config)
         model = FADEModel(config)
 
         num_params = model.count_parameters()
@@ -216,10 +213,8 @@ class TestFADEModel:
 
     def test_forward_pass(self):
         """Test full forward pass with all components."""
-        config = get_default_config()
-        config.model.vocab_size = 100
-        config.model.d_model = 64
-        config.model.n_layers = 2
+        model_config = ModelConfig(vocab_size=100, d_model=64, n_heads=2, n_layers=2)
+        config = FADEConfig(model=model_config)
 
         model = FADEModel(config)
 
@@ -233,8 +228,8 @@ class TestFADEModel:
 
     def test_time_advance_affects_strength(self):
         """Test that advancing time reduces strength."""
-        config = get_default_config()
-        config.model.vocab_size = 100
+        model_config = ModelConfig(vocab_size=100)
+        config = FADEConfig(model=model_config)
         model = FADEModel(config)
 
         input_ids = torch.randint(0, 100, (2, 8))
@@ -256,8 +251,8 @@ class TestFADEModel:
 
     def test_loss_computation(self):
         """Test loss computation."""
-        config = get_default_config()
-        config.model.vocab_size = 100
+        model_config = ModelConfig(vocab_size=100)
+        config = FADEConfig(model=model_config)
         model = FADEModel(config)
 
         input_ids = torch.randint(0, 100, (4, 16))
